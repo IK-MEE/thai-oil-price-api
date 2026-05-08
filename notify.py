@@ -2,8 +2,10 @@ import requests
 import json
 import os
 from datetime import datetime
+from dotenv import load_dotenv
 
 # ── Config from environment variables ──────────────────────────────────────
+load_dotenv()
 LINE_TOKEN = os.environ["LINE_CHANNEL_ACCESS_TOKEN"]
 LINE_USER_ID = os.environ["LINE_USER_ID"]
 OIL_API_URL = "https://oil-price.bangchak.co.th/ApiOilPrice2/th"
