@@ -1,2 +1,6 @@
 requests
 python-dotenv
+supabase
+fastapi
+uvicorn
+httpx
