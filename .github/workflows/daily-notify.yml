@@ -2,8 +2,8 @@ name: Daily Oil Price Notification
 
 on:
   schedule:
-    # Runs at 05:00 AM Bangkok time (UTC+7) = 22:00 UTC previous day
-    - cron: "0 22 * * *"
+    # Runs at 04:00 AM Bangkok time (UTC+7) = 21:00 UTC previous day
+    - cron: "0 21 * * *"
 
   # Allow manual trigger from GitHub Actions UI
   workflow_dispatch:
