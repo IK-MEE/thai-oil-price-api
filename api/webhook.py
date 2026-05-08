@@ -60,7 +60,7 @@ def reply_message(reply_token: str, messages: list):
 
 
 # ── Quick Reply builder ──────────────────────────────────────────────────────
-def build_fuel_selection_message():
+def build_fuel_selection_message(intro_text: str = None):
     items = []
     for fuel in FUELS:
         items.append({
@@ -81,9 +81,10 @@ def build_fuel_selection_message():
             "displayText": "เสร็จแล้ว!",
         },
     })
+    text = intro_text or "⛽ เลือกน้ำมันที่ต้องการติดตามราคาทุกวัน:\n(เลือกได้หลายประเภท กด ✅ เสร็จแล้ว เมื่อเลือกครบ)"
     return {
         "type": "text",
-        "text": "⛽ สวัสดี! เลือกน้ำมันที่ต้องการติดตามราคาทุกวัน:\n(เลือกได้หลายประเภท กด ✅ เสร็จแล้ว เมื่อเลือกครบ)",
+        "text": text,
         "quickReply": {"items": items},
     }
 
@@ -153,18 +154,15 @@ def get_active_fuels(line_user_id: str) -> list:
 class handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
-        """Health check endpoint"""
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(json.dumps({"status": "Oil Price Bot is running! ⛽"}).encode())
 
     def do_POST(self):
-        # Read body
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
 
-        # Verify LINE signature
         signature = self.headers.get("X-Line-Signature", "")
         if not verify_signature(body, signature):
             self.send_response(400)
@@ -172,7 +170,6 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(b"Invalid signature")
             return
 
-        # Parse events
         try:
             data = json.loads(body)
         except json.JSONDecodeError:
@@ -185,32 +182,45 @@ class handler(BaseHTTPRequestHandler):
             user_id = event.get("source", {}).get("userId", "")
             reply_token = event.get("replyToken", "")
 
-            # User adds the bot
+            # ── User adds the bot ────────────────────────────────────────────
             if event_type == "follow":
                 display_name = get_display_name(user_id)
                 upsert_user(user_id, display_name)
-                reply_message(reply_token, [build_fuel_selection_message()])
+                reply_message(reply_token, [build_fuel_selection_message(
+                    f"⛽ สวัสดี {display_name}! เลือกน้ำมันที่ต้องการติดตามราคาทุกวัน:\n(เลือกได้หลายประเภท กด ✅ เสร็จแล้ว เมื่อเลือกครบ)"
+                )])
 
-            # User blocks/removes the bot
+            # ── User blocks/removes the bot ──────────────────────────────────
             elif event_type == "unfollow":
                 deactivate_user(user_id)
 
-            # User taps Quick Reply button
+            # ── User taps Quick Reply button ─────────────────────────────────
             elif event_type == "postback":
                 postback_data = event.get("postback", {}).get("data", "")
+
+                # Safety net: ensure user exists even if follow event was missed
+                display_name = get_display_name(user_id)
+                upsert_user(user_id, display_name)
 
                 if postback_data.startswith("fuel="):
                     fuel_name = postback_data.replace("fuel=", "")
                     result = toggle_fuel_preference(user_id, fuel_name)
 
-                    if result == "all":
-                        msg = "✅ เลือกน้ำมันทั้งหมดแล้ว!\nกด ✅ เสร็จแล้ว เพื่อยืนยัน"
-                    elif result == "on":
-                        msg = f"✅ เพิ่ม {fuel_name} แล้ว!\nเลือกเพิ่มได้ หรือกด ✅ เสร็จแล้ว"
-                    else:
-                        msg = f"❌ ยกเลิก {fuel_name} แล้ว!\nเลือกเพิ่มได้ หรือกด ✅ เสร็จแล้ว"
+                    # Get updated selections summary
+                    active_fuels = get_active_fuels(user_id)
+                    current = ", ".join(active_fuels) if active_fuels else "ยังไม่มี"
 
-                    reply_message(reply_token, [{"type": "text", "text": msg}])
+                    if result == "all":
+                        status_msg = "✅ เลือกน้ำมันทั้งหมดแล้ว!"
+                    elif result == "on":
+                        status_msg = f"✅ เพิ่ม {fuel_name} แล้ว!"
+                    else:
+                        status_msg = f"❌ ยกเลิก {fuel_name} แล้ว!"
+
+                    # Resend menu so user can keep selecting
+                    reply_message(reply_token, [build_fuel_selection_message(
+                        f"{status_msg}\n\n📋 ที่เลือกไว้: {current}\n\nเลือกเพิ่ม/ยกเลิก หรือกด ✅ เสร็จแล้ว"
+                    )])
 
                 elif postback_data == "action=done":
                     active_fuels = get_active_fuels(user_id)
@@ -226,7 +236,7 @@ class handler(BaseHTTPRequestHandler):
                             "text": f"🎉 บันทึกแล้ว! คุณจะได้รับราคาน้ำมันทุกวัน 4:00 น.\n\nน้ำมันที่เลือก:\n{fuel_list}",
                         }])
 
-            # User sends text message
+            # ── User sends text message ──────────────────────────────────────
             elif event_type == "message" and event.get("message", {}).get("type") == "text":
                 text = event["message"]["text"].strip().lower()
                 if any(word in text for word in ["เลือก", "เปลี่ยน", "แก้ไข", "setting", "ตั้งค่า"]):
@@ -237,7 +247,6 @@ class handler(BaseHTTPRequestHandler):
                         "text": "⛽ พิมพ์ 'เลือก' เพื่อเปลี่ยนประเภทน้ำมันที่ติดตามได้เลย!",
                     }])
 
-        # Always return 200 to LINE
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
