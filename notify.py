@@ -68,6 +68,7 @@ def build_message(display_name: str, fuels_to_send: list, oil_date: str, remark:
         line = f"🛢 {display_name_fuel} | ฿{today_price:.2f}"
         if change:
             line += f" | {change}"
+        lines.append(line)
 
     lines.append(f"\n📅 {oil_date}")
 
