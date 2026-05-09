@@ -30,7 +30,10 @@ def fetch_oil_prices():
 
 
 # ── Format price change ──────────────────────────────────────────────────────
-def format_price_change(diff):
+def format_price_change(today_price: float, last_price: float | None) -> str:
+    if last_price is None:
+        return "🆕 ราคาใหม่"
+    diff = round(today_price - last_price, 2)
     if diff > 1:
         return f"🔴 ▲ +{diff:.2f}"
     elif diff > 0:
@@ -51,15 +54,10 @@ def build_message(display_name: str, fuels_to_send: list, oil_date: str, remark:
     lines.append(f"📅 {oil_date}")
     lines.append("─" * 28)
 
-    for fuel_name in fuels_to_send:
-        oil = oil_dict.get(fuel_name)
-        if not oil:
-            continue
-        today = oil["PriceToday"]
-        diff = oil["PriceDifYesterday"]
-        change = format_price_change(diff)
+    for fuel_name, today_price, last_price in fuels_to_send:
+        change = format_price_change(today_price, last_price)
         lines.append(f"🛢 {fuel_name}")
-        lines.append(f"   {today:.2f} บาท/ลิตร  {change}")
+        lines.append(f"   {today_price:.2f} บาท/ลิตร  {change}")
 
     lines.append("─" * 28)
     lines.append(f"📌 {remark}")
@@ -135,6 +133,7 @@ def main():
             continue
 
         # ── Determine which fuels to include in message ──────────────────────
+        # fuels_to_send: list of (fuel_name, today_price, last_price)
         fuels_to_send = []
         fuels_to_update = []
 
@@ -146,14 +145,11 @@ def main():
                 continue
 
             today_price = oil["PriceToday"]
+            price_changed = last_price is None or today_price != last_price
 
-            if notify_on_change_only:
-                # Only include if price changed since last notification
-                if last_price is None or today_price != last_price:
-                    fuels_to_send.append(fuel_name)
-                    fuels_to_update.append((fuel_name, today_price))
-            else:
-                fuels_to_send.append(fuel_name)
+            # Unified check — always send if not change-only, or send if changed
+            if not notify_on_change_only or price_changed:
+                fuels_to_send.append((fuel_name, today_price, last_price))
                 fuels_to_update.append((fuel_name, today_price))
 
         # ── Skip if notify_on_change_only and nothing changed ────────────────
