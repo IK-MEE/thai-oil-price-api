@@ -55,7 +55,7 @@ def format_price_change(today_price: float, last_price: float | None) -> str:
     elif diff < 0:
         return f"▼ {diff:.2f}"
     else:
-        return f""
+        return None
 
 
 # ── Build personalized message ───────────────────────────────────────────────
@@ -65,7 +65,9 @@ def build_message(display_name: str, fuels_to_send: list, oil_date: str, remark:
     for fuel_api_name, today_price, last_price in fuels_to_send:
         display_name_fuel = FUEL_NAMES.get(fuel_api_name, fuel_api_name)
         change = format_price_change(today_price, last_price)
-        lines.append(f"🛢 {display_name_fuel} | {today_price:.2f}฿ | {change}")
+        line = f"🛢 {display_name_fuel} | ฿{today_price:.2f}"
+        if change:
+            line += f" | {change}"
 
     lines.append(f"\n📅 {oil_date}")
 
