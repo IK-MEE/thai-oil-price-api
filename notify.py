@@ -46,33 +46,29 @@ def format_price_change(today_price: float, last_price: float | None) -> str:
     if last_price is None:
         return "🆕 ราคาใหม่"
     diff = round(today_price - last_price, 2)
-    if diff > 1:
+    if diff >= 0.4:
         return f"🔴 ▲ +{diff:.2f}"
     elif diff > 0:
         return f"▲ +{diff:.2f}"
-    elif diff < -1:
+    elif diff <= -0.4:
         return f"🟢 ▼ {diff:.2f}"
     elif diff < 0:
         return f"▼ {diff:.2f}"
     else:
-        return f"─ เท่าเดิม"
+        return f""
 
 
 # ── Build personalized message ───────────────────────────────────────────────
 def build_message(display_name: str, fuels_to_send: list, oil_date: str, remark: str, oil_dict: dict):
     lines = []
-    lines.append(f"สวัสดี {display_name}! 👋")
-    lines.append(f"⛽ ราคาน้ำมัน Bangchak วันนี้")
-    lines.append(f"📅 {oil_date}")
-    lines.append("─" * 28)
 
     for fuel_api_name, today_price, last_price in fuels_to_send:
         display_name_fuel = FUEL_NAMES.get(fuel_api_name, fuel_api_name)
         change = format_price_change(today_price, last_price)
-        lines.append(f"🛢 {display_name_fuel}")
-        lines.append(f"   {today_price:.2f} บาท/ลิตร  {change}")
+        lines.append(f"🛢 {display_name_fuel} | {today_price:.2f}฿ | {change}")
 
-    lines.append("─" * 28)
+    lines.append(f"\n📅 {oil_date}")
+
     lines.append(f"📌 {remark}")
     lines.append("\n💬 พิมพ์ 'ตั้งค่า' เพื่อจัดการการแจ้งเตือน")
 
