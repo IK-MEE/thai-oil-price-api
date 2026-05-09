@@ -1,6 +1,7 @@
-# ⛽ Oil Price LINE Notifier
+# ⛽ Oil Price LINE Bot
 
-Sends daily Bangchak oil prices to your LINE account automatically via GitHub Actions — completely free, no server needed.
+Sends **personalized** daily Bangchak oil prices to LINE followers automatically.
+Each user picks which fuels they want to track and controls their own notification settings — completely free, no server cost.
 
 ---
 
@@ -8,8 +9,14 @@ Sends daily Bangchak oil prices to your LINE account automatically via GitHub Ac
 
 ```
 oil-price-bot/
-├── notify.py                        # Main script
+├── notify.py                        # Daily notification script
 ├── requirements.txt                 # Python dependencies
+├── pyproject.toml                   # Vercel project config
+├── schema.sql                       # Database schema reference
+├── .env.example                     # Example environment variables
+├── .gitignore
+├── api/
+│   └── webhook.py                   # Vercel serverless webhook
 └── .github/
     └── workflows/
         └── daily-notify.yml         # GitHub Actions scheduler
@@ -17,64 +24,161 @@ oil-price-bot/
 
 ---
 
+## 🏗️ Architecture
+
+```
+User adds bot → Vercel webhook → saves to Supabase
+User picks fuels → Vercel webhook → saves preferences
+
+Every ~4AM → GitHub Actions → fetches oil prices from Bangchak API
+                            → reads each user's preferences from Supabase
+                            → sends personalized LINE message per user
+```
+
+---
+
+## 🆓 Free Stack
+
+| Component | Tool | Cost |
+|---|---|---|
+| Webhook server | Vercel serverless | Free |
+| Database | Supabase (PostgreSQL) | Free |
+| Scheduler | GitHub Actions | Free |
+| Messaging | LINE Messaging API | Free |
+| Oil price data | Bangchak API | Free |
+
+---
+
 ## 🚀 Setup Guide
 
-### 1. Create a GitHub Repository
-- Create a new repo (public or private, both work)
-- Upload all files maintaining the folder structure above
+### 1. Supabase — create tables
+Create a new Supabase project then run `schema.sql` in the SQL Editor:
+- Go to your project → **SQL Editor** → **New query**
+- Paste the contents of `schema.sql` and click **Run**
 
-### 2. Add GitHub Secrets
-Go to your repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
+Get your credentials from **Settings** → **Integrations** → **Data API**:
+- `Project URL` — looks like `https://xxxx.supabase.co`
+- `Service Role` key — under **Settings** → **API**
 
-Add these two secrets:
+### 2. LINE Developers — create a Messaging API channel
+1. Go to https://developers.line.biz/console/
+2. Create a **Provider** → **New channel** → **Messaging API**
+3. Create a **LINE Official Account** when prompted
+4. Go to **Messaging API** tab → issue a **Channel access token**
+5. Go to **Basic settings** tab → copy your **Channel secret**
+6. Scan the QR code on the **Messaging API** tab to add your bot as a friend
 
-| Secret Name | Value |
+### 3. Vercel — deploy webhook server
+1. Push this repo to GitHub
+2. Go to https://vercel.com → **Add New Project** → import your repo
+3. Vercel auto-detects the `api/` folder and deploys ✅
+4. Go to your project → **Settings** → **Environment Variables** and add:
+
+| Key | Value |
 |---|---|
 | `LINE_CHANNEL_ACCESS_TOKEN` | Your LINE channel access token |
-| `LINE_USER_ID` | Your LINE user ID (starts with `U...`) |
+| `LINE_CHANNEL_SECRET` | Your LINE channel secret |
+| `SUPABASE_URL` | Your Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Your Supabase service role key |
 
-### 3. Enable GitHub Actions
-- Go to the **Actions** tab in your repo
-- If prompted, click **"I understand my workflows, go ahead and enable them"**
+5. Go to **Deployments** → **Redeploy** to pick up the new env vars
+6. Copy your Vercel domain (e.g. `https://your-app.vercel.app`)
 
-### 4. Test it manually
-- Go to **Actions** → **"Daily Oil Price Notification"**
-- Click **"Run workflow"** → **"Run workflow"**
-- Check your LINE app for the message! 📲
+### 4. LINE — set webhook URL
+1. Go to LINE Developers → your channel → **Messaging API** tab
+2. Set **Webhook URL** to: `https://your-app.vercel.app/webhook`
+3. Enable **"Use webhook"** toggle
+4. Click **"Verify"** — should return success ✅
+
+### 5. GitHub — add secrets
+Go to your repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**:
+
+| Secret | Value |
+|---|---|
+| `LINE_CHANNEL_ACCESS_TOKEN` | Your LINE channel access token |
+| `SUPABASE_URL` | Your Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Your Supabase service role key |
+
+### 6. Test
+- Add your LINE bot as a friend (scan QR code in LINE Developers Console)
+- You should receive a fuel selection menu immediately!
+- Pick your fuels → tap ✅ เสร็จแล้ว
+- Go to GitHub Actions → **Daily Oil Price Notification** → **Run workflow** to test
 
 ---
 
 ## ⏰ Schedule
-The bot runs every day at **06:00 AM Bangkok time (ICT, UTC+7)**.
+Runs every day at approximately **4:00 AM Bangkok time (ICT, UTC+7)**.
+GitHub Actions cron is not guaranteed to run at exact time — expect ±1 hour variance.
 
-To change the time, edit the cron expression in `.github/workflows/daily-notify.yml`:
+To change the schedule, edit `.github/workflows/daily-notify.yml`:
 ```yaml
-- cron: "0 23 * * *"   # 23:00 UTC = 06:00 AM Bangkok (UTC+7)
+- cron: "0 20 * * *"   # 20:00 UTC = 03:00 AM Bangkok (UTC+7)
 ```
 
 ---
 
-## 🛢 Fuels Included
-- ดีเซล B20
-- ไฮดีเซล S
-- แก๊สโซฮอล์ E20 S EVO
-- แก๊สโซฮอล์ 91 S EVO
-- แก๊สโซฮอล์ 95 S EVO
+## 💬 User Commands
+Users can send these messages to the bot at any time:
+- **"เลือก"** / **"เปลี่ยน"** / **"แก้ไข"** — open fuel selection menu
+- **"ตั้งค่า"** / **"setting"** / **"การแจ้งเตือน"** — open settings menu
 
-To add/remove fuels, edit the `FUELS_TO_SHOW` list in `notify.py`.
+---
+
+## ⚙️ User Settings
+Each user can configure via the settings menu:
+- 🔔 **เปิด/ปิด การแจ้งเตือน** — pause all notifications without unfollowing
+- 📊 **แจ้งเฉพาะเมื่อราคาเปลี่ยน** — only notify when tracked fuel prices actually change
+
+---
+
+## 🛢 Supported Fuels
+
+| Display Name | Full Name |
+|---|---|
+| B20 | ดีเซล B20 |
+| ไฮดีเซล | ไฮดีเซล S |
+| พรีเมียม ดีเซล | ไฮ พรีเมียม ดีเซล พลัส |
+| พรีเมียม 98 | ไฮ พรีเมียม 98 พลัส |
+| E85 | แก๊สโซฮอล์ E85 S EVO |
+| E20 | แก๊สโซฮอล์ E20 S EVO |
+| 91 | แก๊สโซฮอล์ 91 S EVO |
+| 95 | แก๊สโซฮอล์ 95 S EVO |
 
 ---
 
 ## 💬 Sample LINE Message
+
 ```
-⛽ ราคาน้ำมัน Bangchak วันนี้
+🛢 B20 | ฿32.95 | 🟢 ▼ -0.85
+🛢 E20 | ฿35.45
+🛢 95  | ฿42.45 | 🔴 ▲ +0.50
+
 📅 07/05/2569
-────────────────────────────
-🛢 ดีเซล B20
-   32.95 บาท/ลิตร  ▼ -0.85
-🛢 ไฮดีเซล S
-   39.95 บาท/ลิตร  ▼ -0.85
-...
-────────────────────────────
 📌 ราคามีผล ณ วันที่ 8 พ.ค. 69 เวลา 05.00 น.
+
+💬 พิมพ์ 'ตั้งค่า' เพื่อจัดการการแจ้งเตือน
 ```
+
+---
+
+## 🔑 Local Development
+
+Copy `.env.example` to `.env` and fill in your values:
+```bash
+cp .env.example .env
+```
+
+Run the notification script locally:
+```bash
+pip install -r requirements.txt
+python notify.py
+```
+---
+
+## 🤖 Built With AI Assistance
+
+This project was collaboratively designed and built with **Claude** (by Anthropic) as an AI pair programmer —
+handling architecture decisions, code generation, debugging, and refactoring across the entire session.
+
+> *"I'll leave my note in case I fall asleep unnoticed"* — the developer, at 2AM 😄
