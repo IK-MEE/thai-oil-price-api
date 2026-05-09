@@ -15,6 +15,18 @@ OIL_API_URL = "https://oil-price.bangchak.co.th/ApiOilPrice2/th"
 
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
+# ── Fuel name mapping (API name → display name) ──────────────────────────────
+FUEL_NAMES = {
+    "ดีเซล B20":              "B20",
+    "ไฮดีเซล S":              "ไฮดีเซล",
+    "ไฮ พรีเมียม ดีเซล พลัส": "พรีเมียม ดีเซล",
+    "ไฮ พรีเมียม 98 พลัส":    "พรีเมียม 98",
+    "แก๊สโซฮอล์ E85 S EVO":   "E85",
+    "แก๊สโซฮอล์ E20 S EVO":   "E20",
+    "แก๊สโซฮอล์ 91 S EVO":    "91",
+    "แก๊สโซฮอล์ 95 S EVO":    "95",
+}
+
 
 # ── Fetch oil prices ─────────────────────────────────────────────────────────
 def fetch_oil_prices():
@@ -54,9 +66,10 @@ def build_message(display_name: str, fuels_to_send: list, oil_date: str, remark:
     lines.append(f"📅 {oil_date}")
     lines.append("─" * 28)
 
-    for fuel_name, today_price, last_price in fuels_to_send:
+    for fuel_api_name, today_price, last_price in fuels_to_send:
+        display_name_fuel = FUEL_NAMES.get(fuel_api_name, fuel_api_name)
         change = format_price_change(today_price, last_price)
-        lines.append(f"🛢 {fuel_name}")
+        lines.append(f"🛢 {display_name_fuel}")
         lines.append(f"   {today_price:.2f} บาท/ลิตร  {change}")
 
     lines.append("─" * 28)
@@ -133,7 +146,7 @@ def main():
             continue
 
         # ── Determine which fuels to include in message ──────────────────────
-        # fuels_to_send: list of (fuel_name, today_price, last_price)
+        # fuels_to_send: list of (fuel_api_name, today_price, last_price)
         fuels_to_send = []
         fuels_to_update = []
 

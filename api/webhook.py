@@ -31,6 +31,18 @@ FUELS = [
 
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
+# ── Fuel name mapping (API name → display name) ──────────────────────────────
+FUEL_NAMES = {
+    "ดีเซล B20":              "B20",
+    "ไฮดีเซล S":              "ไฮดีเซล",
+    "ไฮ พรีเมียม ดีเซล พลัส": "พรีเมียม ดีเซล",
+    "ไฮ พรีเมียม 98 พลัส":    "พรีเมียม 98",
+    "แก๊สโซฮอล์ E85 S EVO":   "E85",
+    "แก๊สโซฮอล์ E20 S EVO":   "E20",
+    "แก๊สโซฮอล์ 91 S EVO":    "91",
+    "แก๊สโซฮอล์ 95 S EVO":    "95",
+}
+
 
 # ── Signature verification ───────────────────────────────────────────────────
 def verify_signature(body: bytes, signature: str) -> bool:
@@ -145,13 +157,14 @@ def build_fuel_selection_message(intro_text: str = None, notify_on_change_only: 
     change_only_status = "✅ เปิดอยู่" if notify_on_change_only else "❌ ปิดอยู่"
     items = []
     for fuel in FUELS:
+        display = FUEL_NAMES.get(fuel, fuel)
         items.append({
             "type": "action",
             "action": {
                 "type": "postback",
-                "label": fuel if len(fuel) <= 20 else fuel[:20],
+                "label": display if len(display) <= 20 else display[:20],
                 "data": f"fuel={fuel}",
-                "displayText": f"เลือก {fuel}",
+                "displayText": f"เลือก {display}",
             },
         })
     items.append({
@@ -312,12 +325,13 @@ class handler(BaseHTTPRequestHandler):
                     current = ", ".join(active_fuels) if active_fuels else "ยังไม่มี"
                     change_only_status = "✅ เปิดอยู่" if notify_on_change_only else "❌ ปิดอยู่"
 
+                    display_fuel = FUEL_NAMES.get(fuel_name, fuel_name)
                     if result == "all":
                         status_msg = "✅ เลือกน้ำมันทั้งหมดแล้ว!"
                     elif result == "on":
-                        status_msg = f"✅ เพิ่ม {fuel_name} แล้ว!"
+                        status_msg = f"✅ เพิ่ม {display_fuel} แล้ว!"
                     else:
-                        status_msg = f"❌ ยกเลิก {fuel_name} แล้ว!"
+                        status_msg = f"❌ ยกเลิก {display_fuel} แล้ว!"
 
                     reply_message(reply_token, [build_fuel_selection_message(
                         intro_text=(
@@ -357,7 +371,7 @@ class handler(BaseHTTPRequestHandler):
                             "text": "⚠️ ยังไม่ได้เลือกน้ำมันเลย!\nกรุณาเลือกอย่างน้อย 1 ประเภท",
                         }])
                     else:
-                        fuel_list = "\n".join([f"  • {f}" for f in active_fuels])
+                        fuel_list = "\n".join([f"  • {FUEL_NAMES.get(f, f)}" for f in active_fuels])
                         reply_message(reply_token, [{
                             "type": "text",
                             "text": (
