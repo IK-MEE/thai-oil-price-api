@@ -76,6 +76,15 @@ def build_fuel_selection_message(intro_text: str = None):
         "type": "action",
         "action": {
             "type": "postback",
+            "label": "🗑 ยกเลิกทั้งหมด",
+            "data": "action=deselect_all",
+            "displayText": "ยกเลิกทั้งหมด",
+        },
+    })
+    items.append({
+        "type": "action",
+        "action": {
+            "type": "postback",
             "label": "✅ เสร็จแล้ว",
             "data": "action=done",
             "displayText": "เสร็จแล้ว!",
@@ -280,6 +289,17 @@ class handler(BaseHTTPRequestHandler):
 
                     reply_message(reply_token, [build_fuel_selection_message(
                         f"{status_msg}\n\n📋 ที่เลือกไว้: {current}\n\nเลือกเพิ่ม/ยกเลิก หรือกด ✅ เสร็จแล้ว"
+                    )])
+
+                # ── Deselect all fuels ──────────────────────────────────────
+                elif postback_data == "action=deselect_all":
+                    all_fuels = [f for f in FUELS if f != "ทั้งหมด"]
+                    for fuel in all_fuels:
+                        supabase.table("preferences").update(
+                            {"is_active": False}
+                        ).eq("line_user_id", user_id).eq("fuel_name", fuel).execute()
+                    reply_message(reply_token, [build_fuel_selection_message(
+                        "🗑 ยกเลิกน้ำมันทั้งหมดแล้ว!\n\n📋 ที่เลือกไว้: ยังไม่มี\n\nเลือกใหม่ได้เลย หรือกด ✅ เสร็จแล้ว"
                     )])
 
                 # ── Done selecting fuels ─────────────────────────────────────
