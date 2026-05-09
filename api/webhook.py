@@ -59,7 +59,7 @@ def reply_message(reply_token: str, messages: list):
     httpx.post(LINE_REPLY_API, headers=headers, json=payload)
 
 
-# ── Quick Reply builder ──────────────────────────────────────────────────────
+# ── Message builders ─────────────────────────────────────────────────────────
 def build_fuel_selection_message(intro_text: str = None):
     items = []
     for fuel in FUELS:
@@ -81,11 +81,59 @@ def build_fuel_selection_message(intro_text: str = None):
             "displayText": "เสร็จแล้ว!",
         },
     })
-    text = intro_text or "⛽ เลือกน้ำมันที่ต้องการติดตามราคาทุกวัน:\n(เลือกได้หลายประเภท กด ✅ เสร็จแล้ว เมื่อเลือกครบ)"
+    text = intro_text or "⛽ เลือกน้ำมันที่ต้องการติดตาม:\n(เลือกได้หลายประเภท กด ✅ เสร็จแล้ว เมื่อเลือกครบ)"
     return {
         "type": "text",
         "text": text,
         "quickReply": {"items": items},
+    }
+
+
+def build_settings_message(user_id: str):
+    user = supabase.table("users").select(
+        "notify_enabled, notify_on_change_only"
+    ).eq("line_user_id", user_id).single().execute()
+
+    notify_enabled = user.data.get("notify_enabled", True)
+    notify_on_change_only = user.data.get("notify_on_change_only", False)
+
+    notify_status = "🔔 เปิดอยู่" if notify_enabled else "🔕 ปิดอยู่"
+    change_status = "✅ เปิดอยู่" if notify_on_change_only else "❌ ปิดอยู่"
+
+    return {
+        "type": "text",
+        "text": f"⚙️ ตั้งค่าการแจ้งเตือน\n\n🔔 การแจ้งเตือน: {notify_status}\n📊 แจ้งเฉพาะเมื่อราคาเปลี่ยน: {change_status}\n\nกดปุ่มด้านล่างเพื่อเปลี่ยนการตั้งค่า",
+        "quickReply": {
+            "items": [
+                {
+                    "type": "action",
+                    "action": {
+                        "type": "postback",
+                        "label": "🔔 เปิด/ปิด การแจ้งเตือน",
+                        "data": "action=toggle_notify",
+                        "displayText": "เปิด/ปิด การแจ้งเตือน",
+                    },
+                },
+                {
+                    "type": "action",
+                    "action": {
+                        "type": "postback",
+                        "label": "📊 แจ้งเมื่อราคาเปลี่ยน",
+                        "data": "action=toggle_change_only",
+                        "displayText": "แจ้งเฉพาะเมื่อราคาเปลี่ยน",
+                    },
+                },
+                {
+                    "type": "action",
+                    "action": {
+                        "type": "postback",
+                        "label": "⛽ เลือกน้ำมัน",
+                        "data": "action=select_fuels",
+                        "displayText": "เลือกน้ำมันที่ติดตาม",
+                    },
+                },
+            ]
+        },
     }
 
 
@@ -102,6 +150,19 @@ def deactivate_user(line_user_id: str):
     supabase.table("users").update(
         {"is_active": False}
     ).eq("line_user_id", line_user_id).execute()
+
+
+def toggle_user_field(line_user_id: str, field: str) -> bool:
+    """Toggle a boolean field in users table, return new value."""
+    result = supabase.table("users").select(field).eq(
+        "line_user_id", line_user_id
+    ).single().execute()
+    current = result.data.get(field, True)
+    new_value = not current
+    supabase.table("users").update(
+        {field: new_value}
+    ).eq("line_user_id", line_user_id).execute()
+    return new_value
 
 
 def toggle_fuel_preference(line_user_id: str, fuel_name: str):
@@ -187,7 +248,7 @@ class handler(BaseHTTPRequestHandler):
                 display_name = get_display_name(user_id)
                 upsert_user(user_id, display_name)
                 reply_message(reply_token, [build_fuel_selection_message(
-                    f"⛽ สวัสดี {display_name}! เลือกน้ำมันที่ต้องการติดตามราคาทุกวัน:\n(เลือกได้หลายประเภท กด ✅ เสร็จแล้ว เมื่อเลือกครบ)"
+                    f"⛽ สวัสดี {display_name}! ยินดีต้อนรับ!\n\nเลือกน้ำมันที่ต้องการติดตามราคาทุกวัน:\n(เลือกได้หลายประเภท กด ✅ เสร็จแล้ว เมื่อเลือกครบ)"
                 )])
 
             # ── User blocks/removes the bot ──────────────────────────────────
@@ -202,11 +263,11 @@ class handler(BaseHTTPRequestHandler):
                 display_name = get_display_name(user_id)
                 upsert_user(user_id, display_name)
 
+                # ── Fuel selection ───────────────────────────────────────────
                 if postback_data.startswith("fuel="):
                     fuel_name = postback_data.replace("fuel=", "")
                     result = toggle_fuel_preference(user_id, fuel_name)
 
-                    # Get updated selections summary
                     active_fuels = get_active_fuels(user_id)
                     current = ", ".join(active_fuels) if active_fuels else "ยังไม่มี"
 
@@ -217,11 +278,11 @@ class handler(BaseHTTPRequestHandler):
                     else:
                         status_msg = f"❌ ยกเลิก {fuel_name} แล้ว!"
 
-                    # Resend menu so user can keep selecting
                     reply_message(reply_token, [build_fuel_selection_message(
                         f"{status_msg}\n\n📋 ที่เลือกไว้: {current}\n\nเลือกเพิ่ม/ยกเลิก หรือกด ✅ เสร็จแล้ว"
                     )])
 
+                # ── Done selecting fuels ─────────────────────────────────────
                 elif postback_data == "action=done":
                     active_fuels = get_active_fuels(user_id)
                     if not active_fuels:
@@ -233,18 +294,53 @@ class handler(BaseHTTPRequestHandler):
                         fuel_list = "\n".join([f"  • {f}" for f in active_fuels])
                         reply_message(reply_token, [{
                             "type": "text",
-                            "text": f"🎉 บันทึกแล้ว! คุณจะได้รับราคาน้ำมันทุกวัน 4:00 น.\n\nน้ำมันที่เลือก:\n{fuel_list}",
+                            "text": f"🎉 บันทึกแล้ว! คุณจะได้รับราคาน้ำมันทุกวัน 4:00 น.\n\nน้ำมันที่เลือก:\n{fuel_list}\n\n💬 พิมพ์ 'ตั้งค่า' เพื่อจัดการการแจ้งเตือน",
                         }])
+
+                # ── Settings: open menu ──────────────────────────────────────
+                elif postback_data == "action=settings":
+                    reply_message(reply_token, [build_settings_message(user_id)])
+
+                # ── Settings: toggle notify on/off ───────────────────────────
+                elif postback_data == "action=toggle_notify":
+                    new_value = toggle_user_field(user_id, "notify_enabled")
+                    status = "🔔 เปิดการแจ้งเตือนแล้ว!" if new_value else "🔕 ปิดการแจ้งเตือนแล้ว!"
+                    reply_message(reply_token, [build_settings_message(user_id)])
+
+                # ── Settings: toggle notify on change only ───────────────────
+                elif postback_data == "action=toggle_change_only":
+                    new_value = toggle_user_field(user_id, "notify_on_change_only")
+                    reply_message(reply_token, [build_settings_message(user_id)])
+
+                # ── Settings: go to fuel selection ───────────────────────────
+                elif postback_data == "action=select_fuels":
+                    active_fuels = get_active_fuels(user_id)
+                    current = ", ".join(active_fuels) if active_fuels else "ยังไม่มี"
+                    reply_message(reply_token, [build_fuel_selection_message(
+                        f"⛽ เลือกน้ำมันที่ต้องการติดตาม:\n📋 ที่เลือกไว้: {current}\n\n(กดเพื่อเพิ่ม/ยกเลิก กด ✅ เสร็จแล้ว เมื่อเลือกครบ)"
+                    )])
 
             # ── User sends text message ──────────────────────────────────────
             elif event_type == "message" and event.get("message", {}).get("type") == "text":
                 text = event["message"]["text"].strip().lower()
-                if any(word in text for word in ["เลือก", "เปลี่ยน", "แก้ไข", "setting", "ตั้งค่า"]):
-                    reply_message(reply_token, [build_fuel_selection_message()])
+
+                if any(word in text for word in ["ตั้งค่า", "setting", "การแจ้งเตือน"]):
+                    # Safety net
+                    display_name = get_display_name(user_id)
+                    upsert_user(user_id, display_name)
+                    reply_message(reply_token, [build_settings_message(user_id)])
+
+                elif any(word in text for word in ["เลือก", "เปลี่ยน", "แก้ไข"]):
+                    active_fuels = get_active_fuels(user_id)
+                    current = ", ".join(active_fuels) if active_fuels else "ยังไม่มี"
+                    reply_message(reply_token, [build_fuel_selection_message(
+                        f"⛽ เลือกน้ำมันที่ต้องการติดตาม:\n📋 ที่เลือกไว้: {current}\n\n(กดเพื่อเพิ่ม/ยกเลิก กด ✅ เสร็จแล้ว เมื่อเลือกครบ)"
+                    )])
+
                 else:
                     reply_message(reply_token, [{
                         "type": "text",
-                        "text": "⛽ พิมพ์ 'เลือก' เพื่อเปลี่ยนประเภทน้ำมันที่ติดตามได้เลย!",
+                        "text": "⛽ สวัสดี!\n\nพิมพ์คำสั่งเหล่านี้ได้เลย:\n• 'เลือก' — เลือกน้ำมันที่ติดตาม\n• 'ตั้งค่า' — จัดการการแจ้งเตือน",
                     }])
 
         self.send_response(200)

@@ -22,12 +22,9 @@ def fetch_oil_prices():
     response.raise_for_status()
     data = response.json()
     raw = data[0]
-
     oil_date = raw.get("OilPriceDate", "")
     remark = raw.get("OilRemark2", "")
     oil_list = json.loads(raw["OilList"])
-
-    # Convert list to dict for easy lookup
     oil_dict = {oil["OilName"]: oil for oil in oil_list}
     return oil_date, remark, oil_dict
 
@@ -47,14 +44,14 @@ def format_price_change(diff):
 
 
 # ── Build personalized message ───────────────────────────────────────────────
-def build_message(display_name: str, fuel_prefs: list, oil_date: str, remark: str, oil_dict: dict):
+def build_message(display_name: str, fuels_to_send: list, oil_date: str, remark: str, oil_dict: dict):
     lines = []
     lines.append(f"สวัสดี {display_name}! 👋")
     lines.append(f"⛽ ราคาน้ำมัน Bangchak วันนี้")
     lines.append(f"📅 {oil_date}")
     lines.append("─" * 28)
 
-    for fuel_name in fuel_prefs:
+    for fuel_name in fuels_to_send:
         oil = oil_dict.get(fuel_name)
         if not oil:
             continue
@@ -66,7 +63,7 @@ def build_message(display_name: str, fuel_prefs: list, oil_date: str, remark: st
 
     lines.append("─" * 28)
     lines.append(f"📌 {remark}")
-    lines.append("\n💬 พิมพ์ 'เลือก' เพื่อเปลี่ยนน้ำมันที่ติดตาม")
+    lines.append("\n💬 พิมพ์ 'ตั้งค่า' เพื่อจัดการการแจ้งเตือน")
 
     return "\n".join(lines)
 
@@ -86,26 +83,23 @@ def send_line_message(user_id: str, text: str):
     response.raise_for_status()
 
 
-# ── Get all active users and their preferences ───────────────────────────────
-def get_active_users():
-    users = (
+# ── Get all active users with their preferences in one query ─────────────────
+def get_users_with_preferences():
+    result = (
         supabase.table("users")
-        .select("line_user_id, display_name")
+        .select("line_user_id, display_name, notify_enabled, notify_on_change_only, preferences(fuel_name, is_active, last_price, last_notified_at)")
         .eq("is_active", True)
         .execute()
     )
-    return users.data
+    return result.data
 
 
-def get_user_fuel_preferences(line_user_id: str) -> list:
-    prefs = (
-        supabase.table("preferences")
-        .select("fuel_name")
-        .eq("line_user_id", line_user_id)
-        .eq("is_active", True)
-        .execute()
-    )
-    return [row["fuel_name"] for row in prefs.data]
+# ── Update last_price and last_notified_at after sending ─────────────────────
+def update_price_history(line_user_id: str, fuel_name: str, new_price: float):
+    supabase.table("preferences").update({
+        "last_price": new_price,
+        "last_notified_at": datetime.utcnow().isoformat(),
+    }).eq("line_user_id", line_user_id).eq("fuel_name", fuel_name).execute()
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -114,31 +108,76 @@ def main():
     oil_date, remark, oil_dict = fetch_oil_prices()
     print(f"✅ Oil prices fetched for {oil_date}")
 
-    users = get_active_users()
+    users = get_users_with_preferences()
     print(f"👥 Found {len(users)} active user(s)")
 
     success = 0
     failed = 0
+    skipped = 0
 
     for user in users:
         user_id = user["line_user_id"]
         display_name = user.get("display_name", "คุณ")
+        notify_enabled = user.get("notify_enabled", True)
+        notify_on_change_only = user.get("notify_on_change_only", False)
+        preferences = [p for p in user.get("preferences", []) if p["is_active"]]
 
-        fuel_prefs = get_user_fuel_preferences(user_id)
-        if not fuel_prefs:
-            print(f"⚠️  Skipping {display_name} — no fuel preferences set")
+        # ── Skip if notifications disabled ───────────────────────────────────
+        if not notify_enabled:
+            print(f"🔕 Skipping {display_name} — notifications disabled")
+            skipped += 1
             continue
 
+        # ── Skip if no fuel preferences set ─────────────────────────────────
+        if not preferences:
+            print(f"⚠️  Skipping {display_name} — no fuel preferences set")
+            skipped += 1
+            continue
+
+        # ── Determine which fuels to include in message ──────────────────────
+        fuels_to_send = []
+        fuels_to_update = []
+
+        for pref in preferences:
+            fuel_name = pref["fuel_name"]
+            last_price = pref.get("last_price")
+            oil = oil_dict.get(fuel_name)
+            if not oil:
+                continue
+
+            today_price = oil["PriceToday"]
+
+            if notify_on_change_only:
+                # Only include if price changed since last notification
+                if last_price is None or today_price != last_price:
+                    fuels_to_send.append(fuel_name)
+                    fuels_to_update.append((fuel_name, today_price))
+            else:
+                fuels_to_send.append(fuel_name)
+                fuels_to_update.append((fuel_name, today_price))
+
+        # ── Skip if notify_on_change_only and nothing changed ────────────────
+        if not fuels_to_send:
+            print(f"📭 Skipping {display_name} — no price changes today")
+            skipped += 1
+            continue
+
+        # ── Send message ─────────────────────────────────────────────────────
         try:
-            message = build_message(display_name, fuel_prefs, oil_date, remark, oil_dict)
+            message = build_message(display_name, fuels_to_send, oil_date, remark, oil_dict)
             send_line_message(user_id, message)
-            print(f"✅ Sent to {display_name} ({len(fuel_prefs)} fuels)")
+
+            # Update last_price for sent fuels
+            for fuel_name, today_price in fuels_to_update:
+                update_price_history(user_id, fuel_name, today_price)
+
+            print(f"✅ Sent to {display_name} ({len(fuels_to_send)} fuels)")
             success += 1
         except Exception as e:
             print(f"❌ Failed to send to {display_name}: {e}")
             failed += 1
 
-    print(f"\n📊 Done! Success: {success} | Failed: {failed}")
+    print(f"\n📊 Done! Success: {success} | Skipped: {skipped} | Failed: {failed}")
 
 
 if __name__ == "__main__":
