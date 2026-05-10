@@ -44,7 +44,7 @@ def fetch_oil_prices():
 # ── Format price change ──────────────────────────────────────────────────────
 def format_price_change(today_price: float, last_price: float | None) -> str:
     if last_price is None:
-        return "🆕 ราคาใหม่"
+        return None
     diff = round(today_price - last_price, 2)
     if diff >= 0.4:
         return f"🔴 ▲ +{diff:.2f}"
