@@ -17,6 +17,9 @@ oil-price-bot/
 ├── .gitignore
 ├── api/
 │   └── webhook.py                   # Vercel serverless webhook
+├── scripts/
+│   └── migrations/
+│       └── 001_sync_last_price.py   # Sync last_price with API
 └── .github/
     └── workflows/
         └── daily-notify.yml         # GitHub Actions scheduler
@@ -30,9 +33,9 @@ oil-price-bot/
 User adds bot → Vercel webhook → saves to Supabase
 User picks fuels → Vercel webhook → saves preferences
 
-Every ~4AM → GitHub Actions → fetches oil prices from Bangchak API
-                            → reads each user's preferences from Supabase
-                            → sends personalized LINE message per user
+Every ~21:00 → GitHub Actions → fetches oil prices from Bangchak API
+                              → reads each user's preferences from Supabase
+                              → sends personalized LINE message per user
 ```
 
 ---
@@ -108,12 +111,13 @@ Go to your repo → **Settings** → **Secrets and variables** → **Actions** �
 ---
 
 ## ⏰ Schedule
-Runs every day at approximately **4:00 AM Bangkok time (ICT, UTC+7)**.
+Runs every day at approximately **21:00 Bangkok time (ICT, UTC+7)**.
+Bangchak publishes the next day's prices around 20:30 — notifying at 21:00 gives users ~8 hours before the price takes effect at 05:00 the next morning.
 GitHub Actions cron is not guaranteed to run at exact time — expect ±1 hour variance.
 
 To change the schedule, edit `.github/workflows/daily-notify.yml`:
 ```yaml
-- cron: "0 20 * * *"   # 20:00 UTC = 03:00 AM Bangkok (UTC+7)
+- cron: "0 14 * * *"   # 14:00 UTC = 21:00 Bangkok (UTC+7)
 ```
 
 ---
@@ -174,6 +178,12 @@ Run the notification script locally:
 pip install -r requirements.txt
 python notify.py
 ```
+
+Run a migration script:
+```bash
+python scripts/migrations/001_sync_last_price.py
+```
+
 ---
 
 ## 🤖 Built With AI Assistance
