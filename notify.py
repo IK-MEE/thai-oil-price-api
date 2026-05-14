@@ -27,6 +27,18 @@ FUEL_NAMES = {
     "แก๊สโซฮอล์ 95 S EVO":    "95",
 }
 
+# ── Fuel API name → oil_price_logs column name ───────────────────────────────
+FUEL_COLUMNS = {
+    "ดีเซล B20":              "b20",
+    "ไฮดีเซล S":              "hi_diesel",
+    "ไฮ พรีเมียม ดีเซล พลัส": "premium_diesel",
+    "ไฮ พรีเมียม 98 พลัส":    "premium_98",
+    "แก๊สโซฮอล์ E85 S EVO":   "e85",
+    "แก๊สโซฮอล์ E20 S EVO":   "e20",
+    "แก๊สโซฮอล์ 91 S EVO":    "gasohol_91",
+    "แก๊สโซฮอล์ 95 S EVO":    "gasohol_95",
+}
+
 BKK_TZ = timezone(timedelta(hours=7))
 
 
@@ -37,10 +49,11 @@ def fetch_oil_prices():
     data = response.json()
     raw = data[0]
     oil_date = raw.get("OilPriceDate", "")
+    effective_date = raw.get("OilDateNow", "")
     remark = raw.get("OilRemark2", "")
     oil_list = json.loads(raw["OilList"])
     oil_dict = {oil["OilName"]: oil for oil in oil_list}
-    return oil_date, remark, oil_dict
+    return oil_date, effective_date, remark, oil_dict
 
 
 # ── Format price change ──────────────────────────────────────────────────────
@@ -73,7 +86,6 @@ def build_message(display_name: str, fuels_to_send: list, oil_date: str, remark:
         lines.append(line)
 
     lines.append(f"\n📅 {oil_date}")
-
     lines.append(f"📌 {remark}")
     lines.append("\n💬 พิมพ์ 'ตั้งค่า' เพื่อจัดการการแจ้งเตือน")
 
@@ -99,7 +111,7 @@ def send_line_message(user_id: str, text: str):
 def get_users_with_preferences():
     result = (
         supabase.table("users")
-        .select("line_user_id, display_name, notify_enabled, notify_on_change_only, preferences(fuel_name, is_active, last_price, last_notified_at)")
+        .select("id, line_user_id, display_name, notify_enabled, notify_on_change_only, preferences(fuel_name, is_active, last_price, last_notified_at)")
         .eq("is_active", True)
         .execute()
     )
@@ -114,11 +126,47 @@ def update_price_history(line_user_id: str, fuel_name: str, new_price: float):
     }).eq("line_user_id", line_user_id).eq("fuel_name", fuel_name).execute()
 
 
+# ── Log oil prices to DB ─────────────────────────────────────────────────────
+def log_oil_prices(published_date: str, effective_date: str, oil_dict: dict):
+    row = {
+        "published_date": published_date,
+        "effective_date": effective_date,
+    }
+    for fuel_api_name, db_col_name in FUEL_COLUMNS.items():
+        oil = oil_dict.get(fuel_api_name)
+        row[db_col_name] = oil["PriceToday"] if oil else None
+
+    supabase.table("oil_price_logs").upsert(
+        row, on_conflict="effective_date"
+    ).execute()
+    print(f"📝 Oil prices logged for effective date: {effective_date}")
+
+
+# ── Log notify to DB ─────────────────────────────────────────────────────────
+def log_notify(user_pk: int, line_user_id: str, fuels_to_send: list):
+    rows = [
+        {
+            "user_id": user_pk,
+            "line_user_id": line_user_id,
+            "fuel_name": fuel_name,
+            "price": today_price,
+        }
+        for fuel_name, today_price, _ in fuels_to_send
+    ]
+    supabase.table("notify_logs").insert(rows).execute()
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 def main():
-    print(f"🔍 Fetching oil prices at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    oil_date, remark, oil_dict = fetch_oil_prices()
-    print(f"✅ Oil prices fetched for {oil_date}")
+    print(f"🔍 Fetching oil prices at {datetime.now(BKK_TZ).strftime('%Y-%m-%d %H:%M:%S')}")
+    oil_date, effective_date, remark, oil_dict = fetch_oil_prices()
+    print(f"✅ Oil prices fetched — published: {oil_date} | effective: {effective_date}")
+
+    # ── Log oil prices ───────────────────────────────────────────────────────
+    try:
+        log_oil_prices(oil_date, effective_date, oil_dict)
+    except Exception as e:
+        print(f"⚠️ Failed to log oil prices: {e}")
 
     users = get_users_with_preferences()
     print(f"👥 Found {len(users)} active user(s)")
@@ -128,6 +176,7 @@ def main():
     skipped = 0
 
     for user in users:
+        user_pk = user["id"]
         user_id = user["line_user_id"]
         display_name = user.get("display_name", "คุณ")
         notify_enabled = user.get("notify_enabled", True)
@@ -180,6 +229,9 @@ def main():
             # Update last_price for sent fuels
             for fuel_name, today_price in fuels_to_update:
                 update_price_history(user_id, fuel_name, today_price)
+
+            # Log notify
+            log_notify(user_pk, user_id, fuels_to_send)
 
             print(f"✅ Sent to {display_name} ({len(fuels_to_send)} fuels)")
             success += 1

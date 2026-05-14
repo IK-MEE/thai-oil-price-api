@@ -1,4 +1,4 @@
--- Users table
+-- ── Users table ──────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   line_user_id TEXT UNIQUE NOT NULL,
@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Preferences table
+-- ── Preferences table ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS preferences (
   id SERIAL PRIMARY KEY,
   line_user_id TEXT NOT NULL REFERENCES users(line_user_id) ON DELETE CASCADE,
@@ -18,4 +18,31 @@ CREATE TABLE IF NOT EXISTS preferences (
   last_price FLOAT DEFAULT NULL,
   last_notified_at TIMESTAMP DEFAULT NULL,
   UNIQUE(line_user_id, fuel_name)
+);
+
+-- ── Oil price logs table ──────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS oil_price_logs (
+  id SERIAL PRIMARY KEY,
+  published_date TEXT NOT NULL,
+  effective_date TEXT NOT NULL,
+  b20 FLOAT,
+  hi_diesel FLOAT,
+  premium_diesel FLOAT,
+  premium_98 FLOAT,
+  e85 FLOAT,
+  e20 FLOAT,
+  gasohol_91 FLOAT,
+  gasohol_95 FLOAT,
+  fetched_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(effective_date)
+);
+
+-- ── Notify logs table ─────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS notify_logs (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  line_user_id TEXT NOT NULL REFERENCES users(line_user_id) ON DELETE CASCADE,
+  fuel_name TEXT NOT NULL,
+  price FLOAT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
 );
