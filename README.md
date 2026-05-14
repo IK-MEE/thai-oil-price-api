@@ -1,4 +1,4 @@
-# ⛽ Oil Price LINE Bot
+# ⛽ Oil Price L.I.N.E. Bot
 
 Sends **personalized** daily Bangchak oil prices to LINE followers automatically.
 Each user picks which fuels they want to track and controls their own notification settings — completely free, no server cost.
