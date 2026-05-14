@@ -44,5 +44,7 @@ CREATE TABLE IF NOT EXISTS notify_logs (
   line_user_id TEXT NOT NULL REFERENCES users(line_user_id) ON DELETE CASCADE,
   fuel_name TEXT NOT NULL,
   price FLOAT NOT NULL,
+  status TEXT DEFAULT 'sent',
+  error_message TEXT DEFAULT NULL,
   created_at TIMESTAMP DEFAULT NOW()
 );

@@ -131,6 +131,7 @@ def log_oil_prices(published_date: str, effective_date: str, oil_dict: dict):
     row = {
         "published_date": published_date,
         "effective_date": effective_date,
+        "fetched_at": datetime.now(BKK_TZ).isoformat(),
     }
     for fuel_api_name, db_col_name in FUEL_COLUMNS.items():
         oil = oil_dict.get(fuel_api_name)
@@ -143,13 +144,16 @@ def log_oil_prices(published_date: str, effective_date: str, oil_dict: dict):
 
 
 # ── Log notify to DB ─────────────────────────────────────────────────────────
-def log_notify(user_pk: int, line_user_id: str, fuels_to_send: list):
+def log_notify(user_pk: int, line_user_id: str, fuels_to_send: list, status: str = "sent", error: str = None):
     rows = [
         {
             "user_id": user_pk,
             "line_user_id": line_user_id,
             "fuel_name": fuel_name,
             "price": today_price,
+            "status": status,
+            "error_message": error,
+            "created_at": datetime.now(BKK_TZ).isoformat(),
         }
         for fuel_name, today_price, _ in fuels_to_send
     ]
@@ -230,12 +234,14 @@ def main():
             for fuel_name, today_price in fuels_to_update:
                 update_price_history(user_id, fuel_name, today_price)
 
-            # Log notify
-            log_notify(user_pk, user_id, fuels_to_send)
+            # Log notify — success
+            log_notify(user_pk, user_id, fuels_to_send, status="sent")
 
             print(f"✅ Sent to {display_name} ({len(fuels_to_send)} fuels)")
             success += 1
         except Exception as e:
+            # Log notify — failure
+            log_notify(user_pk, user_id, fuels_to_send, status="failed", error=str(e))
             print(f"❌ Failed to send to {display_name}: {e}")
             failed += 1
 
