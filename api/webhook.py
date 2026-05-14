@@ -385,7 +385,7 @@ class handler(BaseHTTPRequestHandler):
                         reply_message(reply_token, [{
                             "type": "text",
                             "text": (
-                                f"🎉 บันทึกแล้ว! คุณจะได้รับราคาน้ำมันเวลาประมาณ 4:00 น. ในวันที่มีการแจ้งเตือน\n\n"
+                                f"🎉 บันทึกแล้ว! คุณจะได้รับราคาน้ำมันเวลาประมาณ 21:00 น. ในวันที่มีการแจ้งเตือน\n\n"
                                 f"น้ำมันที่เลือก:\n{fuels_bullet(active_fuels)}\n\n"
                                 f"📊 แจ้งเฉพาะเมื่อราคาเปลี่ยน: {change_only_label(notify_on_change_only)}\n\n"
                                 f"{HINT_MANAGE_SETTINGS}"
