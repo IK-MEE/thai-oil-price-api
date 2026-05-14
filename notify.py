@@ -1,7 +1,7 @@
 import requests
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from supabase import create_client
 
@@ -26,6 +26,8 @@ FUEL_NAMES = {
     "แก๊สโซฮอล์ 91 S EVO":    "91",
     "แก๊สโซฮอล์ 95 S EVO":    "95",
 }
+
+BKK_TZ = timezone(timedelta(hours=7))
 
 
 # ── Fetch oil prices ─────────────────────────────────────────────────────────
@@ -108,7 +110,7 @@ def get_users_with_preferences():
 def update_price_history(line_user_id: str, fuel_name: str, new_price: float):
     supabase.table("preferences").update({
         "last_price": new_price,
-        "last_notified_at": datetime.utcnow().isoformat(),
+        "last_notified_at": datetime.now(BKK_TZ).isoformat(),
     }).eq("line_user_id", line_user_id).eq("fuel_name", fuel_name).execute()
 
 
