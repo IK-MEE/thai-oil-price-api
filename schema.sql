@@ -23,8 +23,12 @@ CREATE TABLE IF NOT EXISTS preferences (
 -- ── Oil price logs table ──────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS oil_price_logs (
   id SERIAL PRIMARY KEY,
-  published_date TEXT NOT NULL,
-  effective_date TEXT NOT NULL,
+  oil_date_now TEXT,
+  oil_price_date TEXT NOT NULL,
+  oil_price_time TEXT,
+  oil_message_date TEXT,
+  oil_message_time TEXT,
+  oil_remark2 TEXT,
   b20 FLOAT,
   hi_diesel FLOAT,
   premium_diesel FLOAT,
@@ -34,7 +38,7 @@ CREATE TABLE IF NOT EXISTS oil_price_logs (
   gasohol_91 FLOAT,
   gasohol_95 FLOAT,
   fetched_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(effective_date)
+  UNIQUE(oil_price_date)
 );
 
 -- ── Notify logs table ─────────────────────────────────────────────────────────

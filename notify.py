@@ -48,12 +48,17 @@ def fetch_oil_prices():
     response.raise_for_status()
     data = response.json()
     raw = data[0]
-    oil_date = raw.get("OilPriceDate", "")
-    effective_date = raw.get("OilDateNow", "")
-    remark = raw.get("OilRemark2", "")
+    meta = {
+        "oil_date_now":     raw.get("OilDateNow", ""),
+        "oil_price_date":   raw.get("OilPriceDate", ""),
+        "oil_price_time":   raw.get("OilPriceTime", ""),
+        "oil_message_date": raw.get("OilMessageDate", ""),
+        "oil_message_time": raw.get("OilMessageTime", ""),
+        "oil_remark2":      raw.get("OilRemark2", ""),
+    }
     oil_list = json.loads(raw["OilList"])
     oil_dict = {oil["OilName"]: oil for oil in oil_list}
-    return oil_date, effective_date, remark, oil_dict
+    return meta, oil_dict
 
 
 # ── Format price change ──────────────────────────────────────────────────────
@@ -74,7 +79,7 @@ def format_price_change(today_price: float, last_price: float | None) -> str:
 
 
 # ── Build personalized message ───────────────────────────────────────────────
-def build_message(display_name: str, fuels_to_send: list, oil_date: str, remark: str, oil_dict: dict):
+def build_message(display_name: str, fuels_to_send: list, meta: dict, oil_dict: dict):
     lines = []
 
     for fuel_api_name, today_price, last_price in fuels_to_send:
@@ -85,8 +90,8 @@ def build_message(display_name: str, fuels_to_send: list, oil_date: str, remark:
             line += f" | {change}"
         lines.append(line)
 
-    lines.append(f"\n📅 {oil_date}")
-    lines.append(f"📌 {remark}")
+    lines.append(f"\n📅 ข้อมูลล่าสุด {meta['oil_price_date']}")
+    lines.append(f"📌 {meta['oil_remark2']} เป็นต้นไป")
     lines.append("\n💬 พิมพ์ 'ตั้งค่า' เพื่อจัดการการแจ้งเตือน")
 
     return "\n".join(lines)
@@ -127,20 +132,24 @@ def update_price_history(line_user_id: str, fuel_name: str, new_price: float):
 
 
 # ── Log oil prices to DB ─────────────────────────────────────────────────────
-def log_oil_prices(published_date: str, effective_date: str, oil_dict: dict):
+def log_oil_prices(meta: dict, oil_dict: dict):
     row = {
-        "published_date": published_date,
-        "effective_date": effective_date,
-        "fetched_at": datetime.now(BKK_TZ).isoformat(),
+        "oil_date_now":     meta["oil_date_now"],
+        "oil_price_date":   meta["oil_price_date"],
+        "oil_price_time":   meta["oil_price_time"],
+        "oil_message_date": meta["oil_message_date"],
+        "oil_message_time": meta["oil_message_time"],
+        "oil_remark2":      meta["oil_remark2"],
+        "fetched_at":       datetime.now(BKK_TZ).isoformat(),
     }
     for fuel_api_name, db_col_name in FUEL_COLUMNS.items():
         oil = oil_dict.get(fuel_api_name)
         row[db_col_name] = oil["PriceToday"] if oil else None
 
     supabase.table("oil_price_logs").upsert(
-        row, on_conflict="effective_date"
+        row, on_conflict="oil_price_date"
     ).execute()
-    print(f"📝 Oil prices logged for effective date: {effective_date}")
+    print(f"📝 Oil prices logged — published: {meta['oil_price_date']} | effective: {meta['oil_remark2']}")
 
 
 # ── Log notify to DB ─────────────────────────────────────────────────────────
@@ -163,12 +172,12 @@ def log_notify(user_pk: int, line_user_id: str, fuels_to_send: list, status: str
 # ── Main ─────────────────────────────────────────────────────────────────────
 def main():
     print(f"🔍 Fetching oil prices at {datetime.now(BKK_TZ).strftime('%Y-%m-%d %H:%M:%S')}")
-    oil_date, effective_date, remark, oil_dict = fetch_oil_prices()
-    print(f"✅ Oil prices fetched — published: {oil_date} | effective: {effective_date}")
+    meta, oil_dict = fetch_oil_prices()
+    print(f"✅ Oil prices fetched — published: {meta['oil_price_date']} {meta['oil_price_time']} | effective: {meta['oil_remark2']}")
 
     # ── Log oil prices ───────────────────────────────────────────────────────
     try:
-        log_oil_prices(oil_date, effective_date, oil_dict)
+        log_oil_prices(meta, oil_dict)
     except Exception as e:
         print(f"⚠️ Failed to log oil prices: {e}")
 
@@ -227,7 +236,7 @@ def main():
 
         # ── Send message ─────────────────────────────────────────────────────
         try:
-            message = build_message(display_name, fuels_to_send, oil_date, remark, oil_dict)
+            message = build_message(display_name, fuels_to_send, meta, oil_dict)
             send_line_message(user_id, message)
 
             # Update last_price for sent fuels
