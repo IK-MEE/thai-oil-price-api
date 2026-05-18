@@ -29,16 +29,40 @@ CREATE TABLE IF NOT EXISTS oil_price_logs (
   oil_message_date TEXT,
   oil_message_time TEXT,
   oil_remark2 TEXT,
-  b20 FLOAT,
-  hi_diesel FLOAT,
-  premium_diesel FLOAT,
-  premium_98 FLOAT,
-  e85 FLOAT,
-  e20 FLOAT,
-  gasohol_91 FLOAT,
-  gasohol_95 FLOAT,
+  -- ดีเซล B20
+  b20_yesterday FLOAT,
+  b20_today FLOAT,
+  b20_tomorrow FLOAT,
+  -- ไฮดีเซล S
+  hi_diesel_yesterday FLOAT,
+  hi_diesel_today FLOAT,
+  hi_diesel_tomorrow FLOAT,
+  -- ไฮ พรีเมียม ดีเซล พลัส
+  premium_diesel_yesterday FLOAT,
+  premium_diesel_today FLOAT,
+  premium_diesel_tomorrow FLOAT,
+  -- ไฮ พรีเมียม 98 พลัส
+  premium_98_yesterday FLOAT,
+  premium_98_today FLOAT,
+  premium_98_tomorrow FLOAT,
+  -- แก๊สโซฮอล์ E85 S EVO
+  e85_yesterday FLOAT,
+  e85_today FLOAT,
+  e85_tomorrow FLOAT,
+  -- แก๊สโซฮอล์ E20 S EVO
+  e20_yesterday FLOAT,
+  e20_today FLOAT,
+  e20_tomorrow FLOAT,
+  -- แก๊สโซฮอล์ 91 S EVO
+  gasohol_91_yesterday FLOAT,
+  gasohol_91_today FLOAT,
+  gasohol_91_tomorrow FLOAT,
+  -- แก๊สโซฮอล์ 95 S EVO
+  gasohol_95_yesterday FLOAT,
+  gasohol_95_today FLOAT,
+  gasohol_95_tomorrow FLOAT,
   fetched_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(oil_price_date)
+  UNIQUE(oil_date_now)
 );
 
 -- ── Notify logs table ─────────────────────────────────────────────────────────

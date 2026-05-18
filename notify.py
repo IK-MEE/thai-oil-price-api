@@ -27,7 +27,7 @@ FUEL_NAMES = {
     "แก๊สโซฮอล์ 95 S EVO":    "95",
 }
 
-# ── Fuel API name → oil_price_logs column name ───────────────────────────────
+# ── Fuel API name → oil_price_logs column prefix ─────────────────────────────
 FUEL_COLUMNS = {
     "ดีเซล B20":              "b20",
     "ไฮดีเซล S":              "hi_diesel",
@@ -62,10 +62,10 @@ def fetch_oil_prices():
 
 
 # ── Format price change ──────────────────────────────────────────────────────
-def format_price_change(today_price: float, last_price: float | None) -> str:
+def format_price_change(tomorrow_price: float, last_price: float | None) -> str:
     if last_price is None:
         return None
-    diff = round(today_price - last_price, 2)
+    diff = round(tomorrow_price - last_price, 2)
     if diff >= 0.4:
         return f"🔴 ▲ +{diff:.2f}"
     elif diff > 0:
@@ -82,10 +82,10 @@ def format_price_change(today_price: float, last_price: float | None) -> str:
 def build_message(display_name: str, fuels_to_send: list, meta: dict, oil_dict: dict):
     lines = []
 
-    for fuel_api_name, today_price, last_price in fuels_to_send:
+    for fuel_api_name, tomorrow_price, last_price in fuels_to_send:
         display_name_fuel = FUEL_NAMES.get(fuel_api_name, fuel_api_name)
-        change = format_price_change(today_price, last_price)
-        line = f"🛢 {display_name_fuel} | ฿{today_price:.2f}"
+        change = format_price_change(tomorrow_price, last_price)
+        line = f"🛢 {display_name_fuel} | ฿{tomorrow_price:.2f}"
         if change:
             line += f" | {change}"
         lines.append(line)
@@ -144,10 +144,12 @@ def log_oil_prices(meta: dict, oil_dict: dict):
     }
     for fuel_api_name, db_col_name in FUEL_COLUMNS.items():
         oil = oil_dict.get(fuel_api_name)
-        row[db_col_name] = oil["PriceToday"] if oil else None
+        row[f"{db_col_name}_yesterday"] = oil["PriceYesterday"] if oil else None
+        row[f"{db_col_name}_today"]     = oil["PriceToday"]     if oil else None
+        row[f"{db_col_name}_tomorrow"]  = oil["PriceTomorrow"]  if oil else None
 
     supabase.table("oil_price_logs").upsert(
-        row, on_conflict="oil_price_date"
+        row, on_conflict="oil_date_now"
     ).execute()
     print(f"📝 Oil prices logged — published: {meta['oil_price_date']} | effective: {meta['oil_remark2']}")
 
@@ -159,12 +161,12 @@ def log_notify(user_pk: int, line_user_id: str, fuels_to_send: list, status: str
             "user_id": user_pk,
             "line_user_id": line_user_id,
             "fuel_name": fuel_name,
-            "price": today_price,
+            "price": tomorrow_price,        # ← price shown in message
             "status": status,
             "error_message": error,
             "created_at": datetime.now(BKK_TZ).isoformat(),
         }
-        for fuel_name, today_price, _ in fuels_to_send
+        for fuel_name, tomorrow_price, _ in fuels_to_send
     ]
     supabase.table("notify_logs").insert(rows).execute()
 
@@ -209,7 +211,7 @@ def main():
             continue
 
         # ── Determine which fuels to include in message ──────────────────────
-        # fuels_to_send: list of (fuel_api_name, today_price, last_price)
+        # fuels_to_send: list of (fuel_api_name, tomorrow_price, last_price)
         fuels_to_send = []
         fuels_to_update = []
 
@@ -220,13 +222,13 @@ def main():
             if not oil:
                 continue
 
-            today_price = oil["PriceToday"]
-            price_changed = last_price is None or today_price != last_price
+            tomorrow_price = oil["PriceTomorrow"]
+            price_changed = last_price is None or tomorrow_price != last_price
 
             # Unified check — always send if not change-only, or send if changed
             if not notify_on_change_only or price_changed:
-                fuels_to_send.append((fuel_name, today_price, last_price))
-                fuels_to_update.append((fuel_name, today_price))
+                fuels_to_send.append((fuel_name, tomorrow_price, last_price))
+                fuels_to_update.append((fuel_name, tomorrow_price))
 
         # ── Skip if notify_on_change_only and nothing changed ────────────────
         if not fuels_to_send:
@@ -239,9 +241,9 @@ def main():
             message = build_message(display_name, fuels_to_send, meta, oil_dict)
             send_line_message(user_id, message)
 
-            # Update last_price for sent fuels
-            for fuel_name, today_price in fuels_to_update:
-                update_price_history(user_id, fuel_name, today_price)
+            # Update last_price with tomorrow's price for next run comparison
+            for fuel_name, tomorrow_price in fuels_to_update:
+                update_price_history(user_id, fuel_name, tomorrow_price)
 
             # Log notify — success
             log_notify(user_pk, user_id, fuels_to_send, status="sent")
