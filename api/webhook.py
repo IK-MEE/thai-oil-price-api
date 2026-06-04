@@ -131,8 +131,12 @@ def toggle_fuel_preference(line_user_id: str, fuel_name: str):
 
     if existing.data:
         current = existing.data[0]["is_active"]
+        update_data = {"is_active": not current}
+        if current:  # currently ON → turning OFF → reset price history
+            update_data["last_price"] = None
+            update_data["last_notified_at"] = None
         supabase.table("preferences").update(
-            {"is_active": not current}
+            update_data
         ).eq("line_user_id", line_user_id).eq("fuel_name", fuel_name).execute()
         return "off" if current else "on"
     else:
@@ -361,7 +365,11 @@ class handler(BaseHTTPRequestHandler):
                     all_fuels = [f for f in FUELS if f != "ทั้งหมด"]
                     for fuel in all_fuels:
                         supabase.table("preferences").update(
-                            {"is_active": False}
+                            {
+                                "is_active": False,
+                                "last_price": None,
+                                "last_notified_at": None
+                            }
                         ).eq("line_user_id", user_id).eq("fuel_name", fuel).execute()
                     reply_message(reply_token, [build_fuel_selection_message(
                         intro_text=(
